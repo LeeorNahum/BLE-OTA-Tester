@@ -63,7 +63,7 @@ class MyCallbacks : public BLECharacteristicCallbacks {
         }
 
         //ums3.setPixelColor(UMS3::color(0, 0, 255));
-        Serial.println(micros()-hi);
+/////////        Serial.println(micros()-hi);
     }
 };
 
@@ -72,7 +72,9 @@ void setup() {
 
     BLEDevice::init("ESP32_BLE_OTA");
     uint16_t mtu = (1024 * 4);
-    BLEDevice::setMTU(mtu);
+    //BLEDevice::setMTU(mtu);
+    BLEDevice::setMTU(517);
+    BLEDevice::setPower(ESP_PWR_LVL_P9);
 
     BLEServer *pServer = BLEDevice::createServer();
     pServer->setCallbacks(new MyServerCallbacks());
@@ -84,7 +86,7 @@ void setup() {
 
     pCharacteristic = pService->createCharacteristic(
         BLEUUID("513fcda9-f46d-4e41-ac4f-42b768495a85"),
-        BLECharacteristic::PROPERTY_WRITE | BLECharacteristic::PROPERTY_READ
+        BLECharacteristic::PROPERTY_READ | BLECharacteristic::PROPERTY_WRITE
     );
 
     pCharacteristic->setCallbacks(new MyCallbacks());
@@ -93,8 +95,8 @@ void setup() {
     BLEAdvertising *pAdvertising = pServer->getAdvertising();
     pAdvertising->addServiceUUID(pService->getUUID());
     pAdvertising->setScanResponse(true);
-    pAdvertising->setMinPreferred(0x0C);  // Minimum preferred connection interval (15ms - 0x0C)
-    pAdvertising->setMaxPreferred(0x18);  // Maximum preferred connection interval (30ms - 0x18)
+    pAdvertising->setMinPreferred(0x00);  // Minimum preferred connection interval (0x06)
+    pAdvertising->setMaxPreferred(0x10);  // Maximum preferred connection interval (0x12)
     pAdvertising->setAppearance(ESP_BLE_APPEARANCE_HID_MOUSE);
     pAdvertising->start();
 

@@ -55,7 +55,7 @@ async def send_firmware(address, file_path):
 
     try:
         async with BleakClient(device, disconnected_callback=handle_disconnect) as client:
-            await asyncio.sleep(0.01)
+            # await asyncio.sleep(0.01)
             
             # Send the size of the file first
             file_size = os.path.getsize(file_path)
@@ -63,7 +63,7 @@ async def send_firmware(address, file_path):
             print(f"Sent file size: {file_size} bytes")
 
             # Calculate total packets
-            chunk_size = 1024 * 1  # Define the chunk size
+            chunk_size = 517 * 1  # Define the chunk size MTU 1024
             total_packets = (file_size + chunk_size - 1) // chunk_size
             packet_number = 0
 
