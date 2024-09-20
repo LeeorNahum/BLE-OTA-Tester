@@ -11,8 +11,7 @@ BLE_ADDRESS = "F4:12:FA:9F:0C:7D"
 SERVICE_UUID = "4e8cbb5e-bc0f-4aab-a6e8-55e662418bef"
 CHARACTERISTIC_UUID = "513fcda9-f46d-4e41-ac4f-42b768495a85"
 
-PART = 16000
-# MTU = 1024
+PART = 16000  # Increased part size for larger chunks of data
 end = True
 fileBytes = None
 total = 0
@@ -55,15 +54,13 @@ async def send_firmware(address, file_path):
 
     try:
         async with BleakClient(device, disconnected_callback=handle_disconnect) as client:
-            # await asyncio.sleep(0.01)
-            
             # Send the size of the file first
             file_size = os.path.getsize(file_path)
-            await client.write_gatt_char(CHARACTERISTIC_UUID, struct.pack("<I", file_size))  # Send as a 4-byte integer
+            await client.write_gatt_char(CHARACTERISTIC_UUID, struct.pack("<I", file_size), response=True)  # Use response for file size write
             print(f"Sent file size: {file_size} bytes")
 
             # Calculate total packets
-            chunk_size = 517 * 1  # Define the chunk size MTU 1024
+            chunk_size = 512  # Reduced chunk size to prevent errors
             total_packets = (file_size + chunk_size - 1) // chunk_size
             packet_number = 0
 
@@ -72,7 +69,7 @@ async def send_firmware(address, file_path):
                 total_sent = 0
                 while chunk := f.read(chunk_size):
                     packet_number += 1
-                    elapsed_time = await send_data(client, chunk, response=True)
+                    elapsed_time = await send_data(client, chunk, response=False)  # Using write without response for large data
                     total_sent += len(chunk)
                     percentage = (total_sent / file_size) * 100
                     bytes_remaining = file_size - total_sent
@@ -80,7 +77,6 @@ async def send_firmware(address, file_path):
                     print(f"Packet {packet_number}/{total_packets}: Sent {total_sent}/{file_size} bytes ({percentage:.2f}%) in {elapsed_time:.4f} seconds. {time_remaining}")
 
             print("All data sent, waiting for the device to disconnect...")
-            # Wait for the disconnect event
             await disconnected_event.wait()
 
     except OSError as e:
@@ -99,18 +95,6 @@ async def scan_for_devices():
         print("No BLE devices found.")
 
 def main():
-    # if len(sys.argv) == 1:
-    #     print("No arguments provided. Scanning for devices instead.")
-    #     asyncio.run(scan_for_devices())
-    #     return
-    
-    # if len(sys.argv) != 3:
-    #     print("Usage: python script.py <BLE_ADDRESS> <FIRMWARE_PATH>")
-    #     sys.exit(1)
-
-    # address = sys.argv[1]
-    # firmware_path = sys.argv[2]
-
     address = "F4:12:FA:9F:0C:7D"
     firmware_path = r".pio\build\um_nanos3\firmware.bin"
 

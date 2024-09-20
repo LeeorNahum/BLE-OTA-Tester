@@ -1,6 +1,4 @@
 #include <BLEDevice.h>
-#include <BLEUtils.h>
-#include <BLEServer.h>
 #include <Update.h>
 #include <UMS3.h>
 
@@ -33,7 +31,7 @@ class MyServerCallbacks: public BLEServerCallbacks {
 class MyCallbacks : public BLECharacteristicCallbacks {
     void onWrite(BLECharacteristic *pCharacteristic) {
         unsigned long long hi = micros();
-        //ums3.setPixelColor(UMS3::color(0, 255, 0));
+        // ums3.setPixelColor(UMS3::color(0, 255, 0));  // LED color indicator (commented out for now)
         std::string value = pCharacteristic->getValue();
 
         if (!sizeReceived) {
@@ -55,15 +53,15 @@ class MyCallbacks : public BLECharacteristicCallbacks {
             }
 
             receivedSize += chunkSize;
-            //Serial.printf("Received %d/%d bytes\n", receivedSize, expectedSize);
+            // Serial.printf("Received %d/%d bytes\n", receivedSize, expectedSize);
 
             if (receivedSize == expectedSize) {
                 newDataAvailable = true;
             }
         }
 
-        //ums3.setPixelColor(UMS3::color(0, 0, 255));
-/////////        Serial.println(micros()-hi);
+        // ums3.setPixelColor(UMS3::color(0, 0, 255));  // LED color indicator (commented out for now)
+        /////////        Serial.println(micros()-hi);
     }
 };
 
@@ -71,22 +69,24 @@ void setup() {
     Serial.begin(115200);
 
     BLEDevice::init("ESP32_BLE_OTA");
-    uint16_t mtu = (1024 * 4);
-    //BLEDevice::setMTU(mtu);
-    BLEDevice::setMTU(517);
-    BLEDevice::setPower(ESP_PWR_LVL_P9);
+
+    // Increase MTU dynamically for faster transmission
+    // uint16_t mtu = (1024 * 4);  // Old MTU (commented out)
+    BLEDevice::setMTU(517);  // Increased MTU size (dynamically adjustable)
+    
+    BLEDevice::setPower(ESP_PWR_LVL_P9);  // BLE power level
 
     BLEServer *pServer = BLEDevice::createServer();
     pServer->setCallbacks(new MyServerCallbacks());
     
     BLESecurity *pSecurity = new BLESecurity();
-    pSecurity->setAuthenticationMode(ESP_LE_AUTH_BOND); // ESP_LE_AUTH_REQ_SC_MITM_BOND
+    pSecurity->setAuthenticationMode(ESP_LE_AUTH_BOND);  // ESP_LE_AUTH_REQ_SC_MITM_BOND
 
     BLEService *pService = pServer->createService(BLEUUID("4e8cbb5e-bc0f-4aab-a6e8-55e662418bef"));
 
     pCharacteristic = pService->createCharacteristic(
         BLEUUID("513fcda9-f46d-4e41-ac4f-42b768495a85"),
-        BLECharacteristic::PROPERTY_READ | BLECharacteristic::PROPERTY_WRITE
+        BLECharacteristic::PROPERTY_READ | BLECharacteristic::PROPERTY_WRITE | BLECharacteristic::PROPERTY_WRITE_NR  // Added write without response
     );
 
     pCharacteristic->setCallbacks(new MyCallbacks());
@@ -105,7 +105,7 @@ void setup() {
     ums3.setPixelBrightness(255 / 3);
     ums3.setPixelColor(UMS3::color(0, 0, 255));
     
-    setCpuFrequencyMhz(240); // 80 160 240
+    setCpuFrequencyMhz(240);  // Set CPU frequency to 240 MHz for faster processing
 }
 
 void loop() {
@@ -115,18 +115,17 @@ void loop() {
         if (receivedSize == expectedSize && expectedSize > 0) {
             Serial.println("All firmware data received, finalizing update...");
 
-            if (Update.end(true)) { // True to set the flag for reboot
+            if (Update.end(true)) {  // True to set the flag for reboot
                 Serial.println("Update complete. Rebooting...");
                 ums3.setPixelColor(UMS3::color(255, 0, 0));
                 ESP.restart();
             } else {
                 Serial.println("Failed to end update");
-                // You can handle the error here, like reverting or retrying
             }
         }
     }
 
-    //if (!deviceConnected) {
-    //    ums3.setPixelColor(UMS3::color(0, 0, random(0, 255)));
-    //}
+    // if (!deviceConnected) {
+    //     ums3.setPixelColor(UMS3::color(0, 0, random(0, 255)));  // LED color animation if not connected (commented out for now)
+    // }
 }
