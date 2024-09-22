@@ -4,34 +4,27 @@ from bleak import BleakClient, BleakScanner
 import struct
 import sys
 import time
+import argparse
 from collections import deque
+from bleak.exc import BleakError
 
-# Replace with your TinyS3's BLE address
-BLE_ADDRESS = "F4:12:FA:9F:0C:7D"
 SERVICE_UUID = "4e8cbb5e-bc0f-4aab-a6e8-55e662418bef"
 CHARACTERISTIC_UUID = "513fcda9-f46d-4e41-ac4f-42b768495a85"
 
-PART = 16000  # Increased part size for larger chunks of data
-end = True
-fileBytes = None
-total = 0
-time_deque = deque(maxlen=10)  # To store the last 10 elapsed times
+time_deque = deque(maxlen=10)
 
-def calculate_time_remaining(elapsed_times, bytes_remaining, chunk_size):
-    """
-    Calculate the estimated time remaining based on the average of the last 10 elapsed times.
-    """
-    if len(elapsed_times) == 0:
+def calculate_time_remaining(elapsed_times_deque, bytes_remaining, chunk_size):
+    if len(elapsed_times_deque) == 0:
         return "Calculating..."
 
-    average_time = sum(elapsed_times) / len(elapsed_times)
+    average_time = sum(elapsed_times_deque) / len(elapsed_times_deque)
     estimated_time_remaining = (bytes_remaining / chunk_size) * average_time
 
     minutes, seconds = divmod(estimated_time_remaining, 60)
     return f"{int(minutes)} minutes and {int(seconds)} seconds remaining"
 
 async def send_firmware(address, file_path):
-    device = await BleakScanner.find_device_by_address(address, timeout=3.0)
+    device = await BleakScanner.find_device_by_address(address, timeout=10.0)
     disconnected_event = asyncio.Event()
 
     if not device:
@@ -39,8 +32,6 @@ async def send_firmware(address, file_path):
         return
 
     def handle_disconnect(_: BleakClient):
-        global end
-        end = False
         print("Device disconnected")
         disconnected_event.set()
 
@@ -49,54 +40,96 @@ async def send_firmware(address, file_path):
         await client.write_gatt_char(CHARACTERISTIC_UUID, data, response)
         end_time = time.time()
         elapsed_time = end_time - start_time
-        time_deque.append(elapsed_time)  # Store the elapsed time
         return elapsed_time
 
     try:
         async with BleakClient(device, disconnected_callback=handle_disconnect) as client:
-            # Send the size of the file first
+            mtu_size = client.mtu_size  # Request maximum MTU
+            print(f"Negotiated MTU size: {mtu_size}")
+            if mtu_size >= 517:
+                chunk_size = mtu_size - 3
+            else:
+                print("MTU negotiation failed or MTU is too small. Using default chunk size of 512 bytes.")
+                chunk_size = 512
+            print(f"Maximum payload size: {chunk_size} bytes")
+
             file_size = os.path.getsize(file_path)
-            await client.write_gatt_char(CHARACTERISTIC_UUID, struct.pack("<I", file_size), response=True)  # Use response for file size write
+            await client.write_gatt_char(CHARACTERISTIC_UUID, struct.pack("<I", file_size), response=True)
             print(f"Sent file size: {file_size} bytes")
 
-            # Calculate total packets
-            chunk_size = 512  # Reduced chunk size to prevent errors
             total_packets = (file_size + chunk_size - 1) // chunk_size
             packet_number = 0
 
-            # Read the file and send in chunks
+            total_sent = 0
+            total_start_time = time.time()
+            initial_estimated_time_printed = False
+
             with open(file_path, 'rb') as f:
-                total_sent = 0
-                while chunk := f.read(chunk_size):
+                while True:
+                    chunk = f.read(chunk_size)
+                    if not chunk:
+                        break
                     packet_number += 1
-                    elapsed_time = await send_data(client, chunk, response=False)  # Using write without response for large data
+
+                    # Measure the time taken to send the packet
+                    elapsed_time = await send_data(client, chunk, response=False)
+                    time_deque.append(elapsed_time)
                     total_sent += len(chunk)
+
+                    # After the first few packets, calculate initial estimated total time
+                    if packet_number == 5 and not initial_estimated_time_printed:
+                        average_time = sum(time_deque) / len(time_deque)
+                        estimated_time_total = average_time * total_packets
+                        est_minutes, est_seconds = divmod(estimated_time_total, 60)
+                        print(f"Initial estimated time to complete: {int(est_minutes)} minutes and {int(est_seconds)} seconds")
+                        initial_estimated_time_printed = True
+
                     percentage = (total_sent / file_size) * 100
                     bytes_remaining = file_size - total_sent
                     time_remaining = calculate_time_remaining(time_deque, bytes_remaining, chunk_size)
                     print(f"Packet {packet_number}/{total_packets}: Sent {total_sent}/{file_size} bytes ({percentage:.2f}%) in {elapsed_time:.4f} seconds. {time_remaining}")
+                    # Removed the sleep to improve speed
+
+            total_end_time = time.time()
+            total_elapsed_time = total_end_time - total_start_time
+            elapsed_minutes, elapsed_seconds = divmod(total_elapsed_time, 60)
+            print(f"\nTotal time elapsed: {int(elapsed_minutes)} minutes and {int(elapsed_seconds)} seconds")
+
+            # Compare initial estimated time with actual elapsed time
+            if initial_estimated_time_printed:
+                time_difference = total_elapsed_time - estimated_time_total
+                diff_minutes, diff_seconds = divmod(abs(time_difference), 60)
+                if time_difference > 0:
+                    print(f"The update took {int(diff_minutes)} minutes and {int(diff_seconds)} seconds longer than estimated.")
+                else:
+                    print(f"The update was completed {int(diff_minutes)} minutes and {int(diff_seconds)} seconds faster than estimated.")
+
+            # Calculate average time per packet and throughput
+            if packet_number > 0:
+                average_time_per_packet = total_elapsed_time / packet_number
+                throughput = total_sent / total_elapsed_time  # Bytes per second
+                print(f"Average time per packet: {average_time_per_packet:.4f} seconds")
+                print(f"Average throughput: {throughput:.2f} bytes/second")
 
             print("All data sent, waiting for the device to disconnect...")
             await disconnected_event.wait()
 
+    except BleakError as e:
+        print(f"Bleak error occurred: {e}")
     except OSError as e:
-        print(f"An error occurred: {e}")
+        print(f"An OS error occurred: {e}")
     except Exception as e:
         print(f"Unexpected error: {e}")
 
-async def scan_for_devices():
-    print("Scanning for BLE devices...")
-    devices = await BleakScanner.discover()
-    if devices:
-        print("Found the following devices:")
-        for device in devices:
-            print(f"Device: {device.name}, Address: {device.address}")
-    else:
-        print("No BLE devices found.")
-
 def main():
-    address = "F4:12:FA:9F:0C:7D"
-    firmware_path = r".pio\build\um_nanos3\firmware.bin"
+    parser = argparse.ArgumentParser(description="BLE OTA Firmware Uploader")
+    parser.add_argument('--address', type=str, help='BLE device address', required=True)
+    parser.add_argument('--file', type=str, help='Firmware file path', required=True)
+
+    args = parser.parse_args()
+
+    address = args.address
+    firmware_path = args.file
 
     if not os.path.exists(firmware_path):
         print(f"File not found: {firmware_path}")
