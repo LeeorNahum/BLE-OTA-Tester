@@ -1,6 +1,7 @@
 #include <BLEDevice.h>
 #include <Update.h>
 #include <UMS3.h>
+#include <esp_sleep.h>
 
 BLECharacteristic *pCharacteristic;
 bool newDataAvailable = false;
@@ -114,6 +115,7 @@ void setup() {
     ums3.setPixelColor(UMS3::color(0, 0, 255));  // Initial color
 
     setCpuFrequencyMhz(240);  // Max CPU frequency
+    esp_sleep_enable_bt_wakeup();
 }
 
 void loop() {
