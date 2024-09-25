@@ -1,9 +1,9 @@
-#include <BLEDevice.h>
+#include <NimBLEDevice.h>
 #include <Update.h>
 #include <UMS3.h>
 #include <esp_sleep.h>
 
-BLECharacteristic *pCharacteristic;
+NimBLECharacteristic *pCharacteristic;
 bool newDataAvailable = false;
 size_t expectedSize = 0;  // The expected size of the firmware
 size_t receivedSize = 0;  // The size of data received so far
@@ -15,27 +15,27 @@ UMS3 ums3;
 bool deviceConnected = false;
 
 // Callback class for BLE server events
-class MyServerCallbacks: public BLEServerCallbacks {
-    void onConnect(BLEServer* pServer) {
+class MyServerCallbacks: public NimBLEServerCallbacks {
+    void onConnect(NimBLEServer* pServer) {
         Serial.println("Client connected");
         deviceConnected = true;
         ums3.setPixelColor(UMS3::color(0, 255, 0));  // Turn LED green when connected
-    };
+    }
 
-    void onDisconnect(BLEServer* pServer) {
+    void onDisconnect(NimBLEServer* pServer) {
         Serial.println("Client disconnected, restarting advertising");
         deviceConnected = false;
         sizeReceived = false;
         receivedSize = 0;
         Update.abort();  // Abort any ongoing update
-        pServer->startAdvertising();
+        NimBLEDevice::startAdvertising();  // Start advertising again
         ums3.setPixelColor(UMS3::color(255, 0, 0));  // Turn LED red when disconnected
     }
 };
 
-class MyCallbacks : public BLECharacteristicCallbacks {
-    void onWrite(BLECharacteristic *pCharacteristic) {
-        std::string value = pCharacteristic->getValue();
+class MyCallbacks : public NimBLECharacteristicCallbacks {
+    void onWrite(NimBLECharacteristic *pCharacteristic) {
+        String value = pCharacteristic->getValue();
 
         if (!sizeReceived) {
             if (value.length() != sizeof(uint32_t)) {
@@ -79,34 +79,32 @@ class MyCallbacks : public BLECharacteristicCallbacks {
 void setup() {
     Serial.begin(115200);
 
-    BLEDevice::init("ESP32_BLE_OTA");
+    NimBLEDevice::init("ESP32_BLE_OTA");
 
-    BLEDevice::setMTU(517);  // Set MTU size to maximum
+    NimBLEDevice::setMTU(512);  // Set MTU size to maximum supported
 
-    BLEDevice::setPower(ESP_PWR_LVL_P9);  // Max BLE power level
+    NimBLEDevice::setPower(ESP_PWR_LVL_P9);  // Max BLE power level
 
-    BLEServer *pServer = BLEDevice::createServer();
+    NimBLEServer *pServer = NimBLEDevice::createServer();
     pServer->setCallbacks(new MyServerCallbacks());
 
-    BLESecurity *pSecurity = new BLESecurity();
-    pSecurity->setAuthenticationMode(ESP_LE_AUTH_BOND);
+    // Security setup
+    NimBLEDevice::setSecurityAuth(true, true, true);  // Enable bonding
 
-    BLEService *pService = pServer->createService(BLEUUID("4e8cbb5e-bc0f-4aab-a6e8-55e662418bef"));
+    NimBLEService *pService = pServer->createService("4e8cbb5e-bc0f-4aab-a6e8-55e662418bef");
 
     pCharacteristic = pService->createCharacteristic(
-        BLEUUID("513fcda9-f46d-4e41-ac4f-42b768495a85"),
-        BLECharacteristic::PROPERTY_READ | BLECharacteristic::PROPERTY_WRITE | BLECharacteristic::PROPERTY_WRITE_NR
+        "513fcda9-f46d-4e41-ac4f-42b768495a85",
+        NIMBLE_PROPERTY::READ | NIMBLE_PROPERTY::WRITE | NIMBLE_PROPERTY::WRITE_NR
     );
 
     pCharacteristic->setCallbacks(new MyCallbacks());
     pService->start();
 
-    BLEAdvertising *pAdvertising = pServer->getAdvertising();
+    NimBLEAdvertising *pAdvertising = NimBLEDevice::getAdvertising();
     pAdvertising->addServiceUUID(pService->getUUID());
     pAdvertising->setScanResponse(true);
-    pAdvertising->setMinPreferred(0x06);
-    pAdvertising->setMaxPreferred(0x12);
-    pAdvertising->setAppearance(ESP_BLE_APPEARANCE_GENERIC_TAG);
+    pAdvertising->setAppearance(0x02);
     pAdvertising->start();
 
     ums3.begin();
@@ -138,7 +136,8 @@ void loop() {
     }
 
     if (!deviceConnected) {
-        ums3.setPixelColor(UMS3::color(0, 0, (millis() / 10) % 255));  // Animate LED
+        int brightness = (int)(sin(millis() / 500.0) * 128 + 128);
+        ums3.setPixelColor(UMS3::color(0, 0, brightness));  // Fade in and out like a sin
     }
 
     delay(100);

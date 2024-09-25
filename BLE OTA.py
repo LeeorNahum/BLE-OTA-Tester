@@ -21,7 +21,7 @@ def calculate_time_remaining(elapsed_times_deque, bytes_remaining, chunk_size):
     estimated_time_remaining = (bytes_remaining / chunk_size) * average_time
 
     minutes, seconds = divmod(estimated_time_remaining, 60)
-    return f"{int(minutes)} minutes and {int(seconds)} seconds remaining"
+    return f"{int(minutes)} minutes and {seconds:.1f} seconds remaining"
 
 async def send_firmware(address, file_path):
     device = await BleakScanner.find_device_by_address(address, timeout=10.0)
@@ -44,14 +44,11 @@ async def send_firmware(address, file_path):
 
     try:
         async with BleakClient(device, disconnected_callback=handle_disconnect) as client:
-            mtu_size = client.mtu_size  # Request maximum MTU
+            mtu_size = client.mtu_size
             print(f"Negotiated MTU size: {mtu_size}")
-            if mtu_size >= 517:
-                chunk_size = mtu_size - 3
-            else:
-                print("MTU negotiation failed or MTU is too small. Using default chunk size of 512 bytes.")
-                chunk_size = 512
-            print(f"Maximum payload size: {chunk_size} bytes")
+            # Since MTU exchange isn't available on Windows, we use a fixed chunk size
+            chunk_size = mtu_size - 3  # Adjust as needed
+            print(f"Using chunk size: {chunk_size} bytes")
 
             file_size = os.path.getsize(file_path)
             await client.write_gatt_char(CHARACTERISTIC_UUID, struct.pack("<I", file_size), response=True)
@@ -81,35 +78,36 @@ async def send_firmware(address, file_path):
                         average_time = sum(time_deque) / len(time_deque)
                         estimated_time_total = average_time * total_packets
                         est_minutes, est_seconds = divmod(estimated_time_total, 60)
-                        print(f"Initial estimated time to complete: {int(est_minutes)} minutes and {int(est_seconds)} seconds")
+                        print(f"Initial estimated time to complete: {int(est_minutes)} minutes and {est_seconds:.2f} seconds")
                         initial_estimated_time_printed = True
 
                     percentage = (total_sent / file_size) * 100
                     bytes_remaining = file_size - total_sent
                     time_remaining = calculate_time_remaining(time_deque, bytes_remaining, chunk_size)
                     print(f"Packet {packet_number}/{total_packets}: Sent {total_sent}/{file_size} bytes ({percentage:.2f}%) in {elapsed_time:.4f} seconds. {time_remaining}")
-                    # Removed the sleep to improve speed
+                    # No delay needed
 
             total_end_time = time.time()
             total_elapsed_time = total_end_time - total_start_time
             elapsed_minutes, elapsed_seconds = divmod(total_elapsed_time, 60)
-            print(f"\nTotal time elapsed: {int(elapsed_minutes)} minutes and {int(elapsed_seconds)} seconds")
+            print(f"\nTotal time elapsed: {int(elapsed_minutes)} minutes and {elapsed_seconds:.2f} seconds")
 
             # Compare initial estimated time with actual elapsed time
             if initial_estimated_time_printed:
                 time_difference = total_elapsed_time - estimated_time_total
                 diff_minutes, diff_seconds = divmod(abs(time_difference), 60)
                 if time_difference > 0:
-                    print(f"The update took {int(diff_minutes)} minutes and {int(diff_seconds)} seconds longer than estimated.")
+                    print(f"The update took {int(diff_minutes)} minutes and {diff_seconds:.2f} seconds longer than estimated.")
                 else:
-                    print(f"The update was completed {int(diff_minutes)} minutes and {int(diff_seconds)} seconds faster than estimated.")
+                    print(f"The update was completed {int(diff_minutes)} minutes and {diff_seconds:.2f} seconds faster than estimated.")
 
             # Calculate average time per packet and throughput
             if packet_number > 0:
                 average_time_per_packet = total_elapsed_time / packet_number
-                throughput = total_sent / total_elapsed_time  # Bytes per second
+                throughput_bytes_per_second = total_sent / total_elapsed_time  # Bytes per second
+                throughput_megabytes_per_second = throughput_bytes_per_second / (1024 * 1024)  # Convert to MB/s
                 print(f"Average time per packet: {average_time_per_packet:.4f} seconds")
-                print(f"Average throughput: {throughput:.2f} bytes/second")
+                print(f"Average throughput: {throughput_bytes_per_second:.2f} bytes/second ({throughput_megabytes_per_second:.2f} MB/s)")
 
             print("All data sent, waiting for the device to disconnect...")
             await disconnected_event.wait()
