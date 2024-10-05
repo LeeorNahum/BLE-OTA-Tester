@@ -21,7 +21,7 @@ def calculate_time_remaining(elapsed_times_deque, bytes_remaining, chunk_size):
     estimated_time_remaining = (bytes_remaining / chunk_size) * average_time
 
     minutes, seconds = divmod(estimated_time_remaining, 60)
-    return f"{int(minutes)} minutes and {seconds:.1f} seconds remaining"
+    return f"{int(minutes)} minutes and {seconds:.2f} seconds remaining"
 
 async def send_firmware(address, file_path):
     device = await BleakScanner.find_device_by_address(address, timeout=10.0)
