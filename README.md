@@ -12,7 +12,7 @@ Hardware tester for the [FastBLEOTA](https://github.com/LeeorNahum/FastBLEOTA) l
 
 - [Unexpected Maker NanoS3](https://unexpectedmaker.com/shop/nanos3) (ESP32-S3 with RGB LED)
 
-<img width="1600" height="900" alt="BLE-OTA-Tester" src="https://github.com/user-attachments/assets/1954cda6-0f5e-4b35-9e86-f2c7c0971fd6" />
+![BLE-OTA-Tester](https://github.com/user-attachments/assets/1954cda6-0f5e-4b35-9e86-f2c7c0971fd6)
 
 ## LED Behavior
 
