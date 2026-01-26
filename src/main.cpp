@@ -196,7 +196,7 @@ void onOTAProgressUpdate(float percent) {
 
 void setup() {
   Serial.begin(115200);
-  delay(1000);  // Allow USB CDC to initialize
+  delay(3000);  // Allow USB CDC to initialize
   
   // Initialize UMS3 and LED
   ums3.begin();
@@ -209,7 +209,7 @@ void setup() {
   // Print build info (this is the key verification!)
   Serial.println();
   Serial.println("============================================");
-  Serial.println("    BLE OTA Tester - FastBLEOTA v3.0.0");
+  Serial.printf("    BLE OTA Tester - FastBLEOTA v%s\n", FASTBLEOTA_VERSION_STRING);
   Serial.println("============================================");
   Serial.printf("Build Timestamp: %lu\n", (unsigned long)BUILD_TIMESTAMP);
   Serial.printf("Build Message:   %s\n", BUILD_MESSAGE);
